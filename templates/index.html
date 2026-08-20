@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Markdown Migration Studio</title>
   <link rel="stylesheet" href="/static/app.css">
+  <style>.toolbar-divider{width:1px;height:28px;background:var(--line);margin:0 2px}</style>
 </head>
 <body>
   <header><div class="brand"><span class="brand-mark">MS</span><div><h1>Markdown Migration Studio</h1><p>LLM-guided document migration with human approval</p></div></div><button class="nav-button" onclick="openSettings()">Settings</button></header>
@@ -25,7 +26,7 @@
     </section>
     <section class="toolbar card">
       <div><span id="progress">No documents scanned</span><span id="connection" class="pill">Ollama unchecked</span></div>
-      <div><button onclick="runAll(false)">Generate all drafts</button><button class="primary" onclick="runAll(true)">Continue all + approve</button><button class="danger" onclick="stopRun()">Stop</button></div>
+      <div><button onclick="runAll(false)">Generate all drafts</button><button class="primary" onclick="runAll(true)">Continue all + approve</button><button class="danger" onclick="stopRun()">Stop</button><span class="toolbar-divider"></span><button onclick="downloadArchive('/api/download/output.zip')">Download outputs ZIP</button><button onclick="downloadArchive('/api/download/output-docx.zip')">Download DOCX ZIP</button></div>
     </section>
     <section class="workspace">
       <aside class="documents card"><h2>Documents</h2><div id="jobs"></div></aside>

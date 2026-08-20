@@ -7,18 +7,20 @@ import logging
 import os
 import re
 import shutil
+import tempfile
 import threading
 import time
 import uuid
+import zipfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import requests
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_file
 
-from document_conversion import docx_to_markdown
+from document_conversion import docx_to_markdown, markdown_to_docx
 
 
 APP_ROOT = Path(__file__).resolve().parent
@@ -349,6 +351,45 @@ def worker_all(auto_approve: bool) -> None:
         persist()
 
 
+def output_files() -> tuple[Path, list[Path]]:
+    if not state.get("output_dir"):
+        raise ValueError("Choose and scan an output folder before downloading")
+    output_root = safe_resolve(state["output_dir"])
+    if not output_root.is_dir():
+        raise ValueError("The configured output path is not a directory")
+    files = sorted(
+        path for path in output_root.rglob("*")
+        if path.is_file() and (path.resolve() == output_root or output_root in path.resolve().parents)
+    )
+    if not files:
+        raise ValueError("There are no output files to download")
+    return output_root, files
+
+
+def archive_download(word_copies: bool = False):
+    output_root, files = output_files()
+    archive = tempfile.SpooledTemporaryFile(max_size=16 * 1024 * 1024)
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        if word_copies:
+            markdown_files = [path for path in files if path.suffix.lower() == ".md"]
+            if not markdown_files:
+                raise ValueError("There are no Markdown output files to convert to Word")
+            with tempfile.TemporaryDirectory() as temporary:
+                conversion_root = Path(temporary)
+                for source in markdown_files:
+                    relative = source.relative_to(output_root).with_suffix(".docx")
+                    converted = conversion_root / relative
+                    markdown_to_docx(read_text(source), converted)
+                    bundle.write(converted, relative.as_posix())
+        else:
+            for source in files:
+                bundle.write(source, source.relative_to(output_root).as_posix())
+    archive.seek(0)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    name = f"output-docx-{timestamp}.zip" if word_copies else f"output-files-{timestamp}.zip"
+    return send_file(archive, mimetype="application/zip", as_attachment=True, download_name=name)
+
+
 @app.get("/")
 def index():
     return render_template("index.html")
@@ -369,6 +410,16 @@ def api_state():
                 "output": str(OUTPUT_UPLOAD_ROOT),
             },
         })
+
+
+@app.get("/api/download/output.zip")
+def api_download_output():
+    return archive_download()
+
+
+@app.get("/api/download/output-docx.zip")
+def api_download_output_docx():
+    return archive_download(word_copies=True)
 
 
 @app.post("/api/settings")
