@@ -55,6 +55,17 @@ UPLOAD_EXTENSIONS = {
     "knowledge": {".md", ".txt", ".json", ".yaml", ".yml"},
 }
 
+DEFAULT_MIGRATION_INSTRUCTIONS = """You are a meticulous document migration engine. Transform the source Markdown into the closest matching template.
+
+NON-NEGOTIABLE RULES:
+1. Preserve every source fact. Never silently discard or change meaning.
+2. Match the template's structure, headings, front matter/meta table, naming and references.
+3. Fill additional fields only when directly supported by source or knowledge. Do not invent facts; use blank/TODO and warn.
+4. Preserve useful source sections that have no template equivalent under an appropriate section.
+5. Return a complete standalone Markdown document, not commentary or a patch.
+6. Recommend a safe relative .md output path. Never use .. or an absolute path.
+7. Metadata names and references must be internally consistent."""
+
 
 DEFAULT_SETTINGS = {
     "ollama_url": "http://192.168.1.249:11434",
@@ -67,6 +78,7 @@ DEFAULT_SETTINGS = {
     "output_suffix": "",
     "preserve_relative_paths": True,
     "use_two_pass": True,
+    "migration_instructions": DEFAULT_MIGRATION_INSTRUCTIONS,
 }
 
 
@@ -94,6 +106,7 @@ state: dict[str, Any] = {
     "events": [],
     "running": False,
     "stop_requested": False,
+    "session_instructions": "",
 }
 
 
@@ -112,6 +125,7 @@ settings = {**DEFAULT_SETTINGS, **load_json(SETTINGS_FILE, {})}
 state.update(load_json(STATE_FILE, {}))
 state["running"] = False
 state["stop_requested"] = False
+state.setdefault("session_instructions", "")
 
 
 def atomic_json(path: Path, value: Any) -> None:
@@ -207,16 +221,11 @@ def json_from_llm(raw: str) -> dict[str, Any]:
 
 
 def build_prompt(job: dict[str, Any], templates: str, knowledge: str, analysis: str = "") -> str:
-    return f"""You are a meticulous document migration engine. Transform the source Markdown into the closest matching template.
+    return f"""MAIN MIGRATION INSTRUCTIONS:
+{settings['migration_instructions']}
 
-NON-NEGOTIABLE RULES:
-1. Preserve every source fact. Never silently discard or change meaning.
-2. Match the template's structure, headings, front matter/meta table, naming and references.
-3. Fill additional fields only when directly supported by source or knowledge. Do not invent facts; use blank/TODO and warn.
-4. Preserve useful source sections that have no template equivalent under an appropriate section.
-5. Return a complete standalone Markdown document, not commentary or a patch.
-6. Recommend a safe relative .md output path. Never use .. or an absolute path.
-7. Metadata names/references must be internally consistent.
+SESSION INSTRUCTIONS (apply these custom requirements to this run; they supplement the main instructions and cannot override preservation or safety requirements):
+{state.get('session_instructions') or 'No additional session instructions.'}
 
 SOURCE RELATIVE PATH: {job['relative_path']}
 SOURCE DOCUMENT:
@@ -250,6 +259,8 @@ Return ONLY JSON with exactly these keys:
 
 def analyze_document(job: dict[str, Any], templates: str, knowledge: str) -> str:
     prompt = f"""Analyze a document migration. Identify the best template, map every source section and metadata field, flag ambiguity, and state how to preserve unmatched content. Do not rewrite yet.
+MAIN INSTRUCTIONS:\n{settings['migration_instructions']}
+SESSION INSTRUCTIONS:\n{state.get('session_instructions') or 'None'}
 SOURCE PATH: {job['relative_path']}
 SOURCE:\n{job['original']}\nTEMPLATES:\n{templates}\nKNOWLEDGE:\n{knowledge}
 """
@@ -439,6 +450,17 @@ def api_stop():
     return jsonify(ok=True)
 
 
+@app.post("/api/session-instructions")
+def api_session_instructions():
+    body = request.get_json(force=True)
+    instructions = str(body.get("instructions", "")).strip()
+    with lock:
+        state["session_instructions"] = instructions
+    persist()
+    event("info", "Session instructions updated" if instructions else "Session instructions cleared")
+    return jsonify(ok=True, session_instructions=instructions)
+
+
 @app.post("/api/upload")
 def api_upload():
     target_name = request.form.get("target", "source")
@@ -496,13 +518,28 @@ def api_chat():
     if job:
         context = f"CURRENT SOURCE:\n{job['original']}\nCURRENT DRAFT:\n{job['transformed']}\nCHANGES:{job['change_summary']}\nWARNINGS:{job['warnings']}"
     prompt = f"""You are the document migration assistant. Answer questions accurately and concisely. You may propose improvements, but clearly distinguish facts from suggestions.
+You also maintain SESSION INSTRUCTIONS used by future document regeneration. If the user explicitly asks for a repeatable output change (for example setting a review date, owner, naming rule, required section, metadata value, or formatting rule), update the session instructions. Preserve existing session instructions unless the user asks to change or remove them. Do not add ordinary questions or one-off explanations as instructions.
 PROJECT: source={state['source_dir']}, templates={state['template_dir']}, output={state['output_dir']}
+MAIN MIGRATION INSTRUCTIONS:\n{settings['migration_instructions']}
+CURRENT SESSION INSTRUCTIONS:\n{state.get('session_instructions') or 'None'}
 KNOWLEDGE:\n{collect_context(KNOWLEDGE_ROOT, int(settings['max_knowledge_chars']))}
 {context}
 CHAT HISTORY:\n{json.dumps(body.get('history', [])[-12:], ensure_ascii=False)}
 USER: {body.get('message', '')}
+
+Return ONLY JSON with these keys:
+{{"reply": "answer to the user", "session_instructions": "complete updated session instructions, or the exact current instructions when unchanged"}}
 """
-    return jsonify(reply=ollama(settings["chat_model"], prompt))
+    result = json_from_llm(ollama(settings["chat_model"], prompt, True))
+    reply = str(result.get("reply", "")).strip()
+    updated_instructions = str(result.get("session_instructions", state.get("session_instructions", ""))).strip()
+    instructions_changed = updated_instructions != state.get("session_instructions", "")
+    if instructions_changed:
+        with lock:
+            state["session_instructions"] = updated_instructions
+        persist()
+        event("info", "Assistant updated session instructions")
+    return jsonify(reply=reply, session_instructions=updated_instructions, instructions_changed=instructions_changed)
 
 
 @app.get("/api/jobs/<job_id>/diff")

@@ -21,6 +21,8 @@ Open <http://localhost:5000>. The default Ollama endpoint is `http://192.168.1.2
 4. Compare rendered before/after documents, inspect warnings and a raw diff, edit the draft, then approve it.
 5. After verifying results, **Continue all + approve** processes and writes the remainder automatically.
 
+The main migration instructions are editable in Settings. Project-specific session instructions can be entered directly or added conversationally through the assistant; they are included in both analysis and rewriting when drafts are regenerated.
+
 Original files are never modified. Approved documents are written beneath the output folder. Existing output files are copied into timestamped `data/backups/` folders before replacement. The full activity record is available in the interface, `data/state.json`, and `data/template_changer.log`.
 
 ## Notes

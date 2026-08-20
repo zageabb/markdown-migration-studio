@@ -43,7 +43,7 @@
       </section>
       <aside class="side">
         <section class="log card"><h2>Activity log</h2><div id="events"></div></section>
-        <section class="chat card"><h2>Ask the assistant</h2><div id="messages"></div><form onsubmit="sendChat(event)"><textarea id="chatInput" placeholder="Ask about this migration…"></textarea><button>Send</button></form></section>
+        <section class="chat card"><h2>Ask the assistant</h2><div class="session-box"><label>Session instructions<textarea id="sessionInstructions" placeholder="Example: Set Review Date to 30 September 2026 for every rebuilt document."></textarea></label><button onclick="saveSessionInstructions()">Save</button></div><div id="messages"></div><form onsubmit="sendChat(event)"><textarea id="chatInput" placeholder="Ask a question or add an instruction…"></textarea><button>Send</button></form></section>
       </aside>
     </section>
   </main>
