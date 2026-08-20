@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Markdown Migration Studio</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header><div class="brand"><span class="brand-mark">MS</span><div><h1>Markdown Migration Studio</h1><p>LLM-guided document migration with human approval</p></div></div><button class="nav-button" onclick="openSettings()">Settings</button></header>
+  <main>
+    <section class="setup card">
+      <label>Source folder<input id="sourceDir" placeholder="/path/to/current-documents"></label>
+      <label>Template folder<input id="templateDir" placeholder="/path/to/templates"></label>
+      <label>Output folder<input id="outputDir" placeholder="/path/to/migrated-documents"></label>
+      <button onclick="scan()">Scan documents</button>
+      <label class="upload">Add knowledge<input id="knowledge" type="file" accept=".md,.txt,.json,.yaml,.yml" onchange="uploadKnowledge()"></label>
+    </section>
+    <section class="toolbar card">
+      <div><span id="progress">No documents scanned</span><span id="connection" class="pill">Ollama unchecked</span></div>
+      <div><button onclick="runAll(false)">Generate all drafts</button><button class="primary" onclick="runAll(true)">Continue all + approve</button><button class="danger" onclick="stopRun()">Stop</button></div>
+    </section>
+    <section class="workspace">
+      <aside class="documents card"><h2>Documents</h2><div id="jobs"></div></aside>
+      <section class="review card">
+        <div id="empty" class="empty">Scan a source folder, then choose a document.</div>
+        <div id="review" hidden>
+          <div class="review-head"><div><h2 id="docTitle"></h2><span id="docStatus" class="pill"></span></div><div><button onclick="processSelected()">Regenerate</button><button class="primary" onclick="approveSelected()">Approve & write</button></div></div>
+          <label>Output path<input id="outputPath"></label>
+          <div id="summary" class="summary"></div>
+          <div class="tabs"><button class="active" data-view="preview">Rendered</button><button data-view="edit">Edit draft</button><button data-view="diff">Raw diff</button></div>
+          <div id="preview" class="compare"><article><h3>Before</h3><div id="before" class="markdown"></div></article><article><h3>After</h3><div id="after" class="markdown"></div></article></div>
+          <div id="edit" hidden><textarea id="draft"></textarea><button onclick="saveDraft()">Save draft edits</button></div>
+          <pre id="diff" hidden></pre>
+        </div>
+      </section>
+      <aside class="side">
+        <section class="log card"><h2>Activity log</h2><div id="events"></div></section>
+        <section class="chat card"><h2>Ask the assistant</h2><div id="messages"></div><form onsubmit="sendChat(event)"><textarea id="chatInput" placeholder="Ask about this migration…"></textarea><button>Send</button></form></section>
+      </aside>
+    </section>
+  </main>
+  <dialog id="settingsDialog"><form method="dialog"><div class="dialog-head"><h2>Settings</h2><button class="ghost">×</button></div><div id="settingsFields"></div><div class="dialog-actions"><button value="cancel">Cancel</button><button type="button" class="primary" onclick="saveSettings()">Save settings</button></div></form></dialog>
+  <script src="/static/app.js"></script>
+</body>
+</html>

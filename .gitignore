@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.venv/
+data/state.json
+data/settings.json
+data/template_changer.log
+data/backups/
+data/knowledge/*
+!data/knowledge/.gitkeep
