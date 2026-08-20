@@ -18,6 +18,8 @@ from typing import Any
 import requests
 from flask import Flask, jsonify, render_template, request
 
+from document_conversion import docx_to_markdown
+
 
 APP_ROOT = Path(__file__).resolve().parent
 DATA_ROOT = APP_ROOT / "data"
@@ -48,8 +50,8 @@ UPLOAD_TARGETS = {
     "knowledge": KNOWLEDGE_ROOT,
 }
 UPLOAD_EXTENSIONS = {
-    "source": {".md"},
-    "templates": {".md", ".txt", ".json", ".yaml", ".yml"},
+    "source": {".md", ".docx"},
+    "templates": {".md", ".docx", ".txt", ".json", ".yaml", ".yml"},
     "knowledge": {".md", ".txt", ".json", ".yaml", ".yml"},
 }
 
@@ -448,6 +450,7 @@ def api_upload():
     target_root = UPLOAD_TARGETS[target_name]
     allowed = UPLOAD_EXTENSIONS[target_name]
     saved: list[str] = []
+    converted: list[dict[str, str]] = []
     rejected: list[str] = []
     for uploaded in uploads:
         if not uploaded.filename:
@@ -461,11 +464,24 @@ def api_upload():
             rejected.append(relative.as_posix())
             continue
         destination.parent.mkdir(parents=True, exist_ok=True)
-        uploaded.save(destination)
-        saved.append(relative.as_posix())
+        if relative.suffix.lower() == ".docx":
+            temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.upload")
+            try:
+                uploaded.save(temporary)
+                markdown_path = destination.with_suffix(".md")
+                markdown_path.write_text(docx_to_markdown(temporary), encoding="utf-8")
+                saved.append(markdown_path.relative_to(target_root).as_posix())
+                converted.append({"from": relative.as_posix(), "to": markdown_path.relative_to(target_root).as_posix()})
+            except Exception as exc:
+                rejected.append(f"{relative.as_posix()}: {exc}")
+            finally:
+                temporary.unlink(missing_ok=True)
+        else:
+            uploaded.save(destination)
+            saved.append(relative.as_posix())
     if saved:
-        event("info", f"Uploaded {len(saved)} file(s) to {target_name}" + (f"; rejected {len(rejected)} unsupported file(s)" if rejected else ""))
-    return jsonify(ok=True, saved=saved, rejected=rejected, paths={
+        event("info", f"Uploaded {len(saved)} file(s) to {target_name}" + (f", including {len(converted)} Word conversion(s)" if converted else "") + (f"; rejected {len(rejected)} file(s)" if rejected else ""))
+    return jsonify(ok=True, saved=saved, converted=converted, rejected=rejected, paths={
         "source_dir": str(SOURCE_UPLOAD_ROOT),
         "template_dir": str(TEMPLATE_UPLOAD_ROOT),
         "output_dir": str(OUTPUT_UPLOAD_ROOT),

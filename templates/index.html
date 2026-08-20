@@ -19,7 +19,7 @@
     <section class="uploads card">
       <div><strong>Send files to the server</strong><span id="workspacePath">Uploads retain their folder structure.</span></div>
       <label>Destination<select id="uploadTarget"><option value="source">Source documents</option><option value="templates">Templates</option><option value="knowledge">Knowledge</option></select></label>
-      <label class="upload">Choose files<input id="uploadFiles" type="file" multiple accept=".md,.txt,.json,.yaml,.yml" onchange="uploadSelected(this)"></label>
+      <label class="upload">Choose files<input id="uploadFiles" type="file" multiple accept=".md,.docx,.txt,.json,.yaml,.yml" onchange="uploadSelected(this)"></label>
       <label class="upload">Choose folder<input id="uploadFolder" type="file" multiple webkitdirectory directory onchange="uploadSelected(this)"></label>
       <span id="uploadStatus" class="muted"></span>
     </section>
