@@ -26,6 +26,8 @@ Original files are never modified. Approved documents are written beneath the ou
 ## Notes
 
 - The app reads `.md` source files recursively.
+- The upload panel accepts multiple files or a complete folder and safely preserves relative subfolders in the server workspace.
+- Set `MIGRATION_WORKSPACE` to select the server upload location. The deployment uses `/home/zageabb/markdown-migration-files`.
 - Template and knowledge context supports `.md`, `.txt`, `.json`, `.yaml`, and `.yml`.
 - LLM output paths are constrained beneath the configured output directory.
 - For large libraries, keep templates focused and use concise knowledge files; context limits are editable in Settings.

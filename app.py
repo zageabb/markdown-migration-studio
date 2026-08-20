@@ -21,11 +21,15 @@ from flask import Flask, jsonify, render_template, request
 
 APP_ROOT = Path(__file__).resolve().parent
 DATA_ROOT = APP_ROOT / "data"
-KNOWLEDGE_ROOT = DATA_ROOT / "knowledge"
+WORKSPACE_ROOT = Path(os.environ.get("MIGRATION_WORKSPACE", DATA_ROOT / "workspace")).expanduser().resolve()
+SOURCE_UPLOAD_ROOT = WORKSPACE_ROOT / "source"
+TEMPLATE_UPLOAD_ROOT = WORKSPACE_ROOT / "templates"
+KNOWLEDGE_ROOT = WORKSPACE_ROOT / "knowledge"
+OUTPUT_UPLOAD_ROOT = WORKSPACE_ROOT / "output"
 STATE_FILE = DATA_ROOT / "state.json"
 SETTINGS_FILE = DATA_ROOT / "settings.json"
 LOG_FILE = DATA_ROOT / "template_changer.log"
-for directory in (DATA_ROOT, KNOWLEDGE_ROOT):
+for directory in (DATA_ROOT, WORKSPACE_ROOT, SOURCE_UPLOAD_ROOT, TEMPLATE_UPLOAD_ROOT, KNOWLEDGE_ROOT, OUTPUT_UPLOAD_ROOT):
     directory.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
@@ -35,7 +39,19 @@ logging.basicConfig(
 )
 log = logging.getLogger("template-changer")
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 512 * 1024 * 1024
 lock = threading.RLock()
+
+UPLOAD_TARGETS = {
+    "source": SOURCE_UPLOAD_ROOT,
+    "templates": TEMPLATE_UPLOAD_ROOT,
+    "knowledge": KNOWLEDGE_ROOT,
+}
+UPLOAD_EXTENSIONS = {
+    "source": {".md"},
+    "templates": {".md", ".txt", ".json", ".yaml", ".yml"},
+    "knowledge": {".md", ".txt", ".json", ".yaml", ".yml"},
+}
 
 
 DEFAULT_SETTINGS = {
@@ -129,6 +145,20 @@ def read_text(path: Path) -> str:
         return path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         return path.read_text(encoding="utf-8", errors="replace")
+
+
+def safe_upload_relative_path(filename: str) -> Path:
+    normalized = filename.replace("\\", "/").lstrip("/")
+    parts = []
+    for part in Path(normalized).parts:
+        if part in {"", ".", ".."}:
+            continue
+        cleaned = re.sub(r"[^A-Za-z0-9._() -]", "_", part).strip()
+        if cleaned:
+            parts.append(cleaned)
+    if not parts:
+        raise ValueError("An uploaded file had no safe filename")
+    return Path(*parts)
 
 
 def collect_context(root: Path, limit: int = 120000) -> str:
@@ -314,7 +344,18 @@ def index():
 @app.get("/api/state")
 def api_state():
     with lock:
-        return jsonify({"state": state, "settings": settings, "knowledge": [p.name for p in KNOWLEDGE_ROOT.iterdir() if p.is_file()]})
+        return jsonify({
+            "state": state,
+            "settings": settings,
+            "knowledge": [p.relative_to(KNOWLEDGE_ROOT).as_posix() for p in KNOWLEDGE_ROOT.rglob("*") if p.is_file()],
+            "workspace": {
+                "root": str(WORKSPACE_ROOT),
+                "source": str(SOURCE_UPLOAD_ROOT),
+                "templates": str(TEMPLATE_UPLOAD_ROOT),
+                "knowledge": str(KNOWLEDGE_ROOT),
+                "output": str(OUTPUT_UPLOAD_ROOT),
+            },
+        })
 
 
 @app.post("/api/settings")
@@ -396,17 +437,39 @@ def api_stop():
     return jsonify(ok=True)
 
 
-@app.post("/api/knowledge")
-def api_knowledge():
-    uploaded = request.files.get("file")
-    if not uploaded or not uploaded.filename:
-        return jsonify(error="No file supplied"), 400
-    name = Path(uploaded.filename).name
-    if Path(name).suffix.lower() not in {".md", ".txt", ".json", ".yaml", ".yml"}:
-        return jsonify(error="Use Markdown, text, JSON, or YAML knowledge files"), 400
-    uploaded.save(KNOWLEDGE_ROOT / name)
-    event("info", f"Knowledge uploaded: {name}")
-    return jsonify(ok=True)
+@app.post("/api/upload")
+def api_upload():
+    target_name = request.form.get("target", "source")
+    if target_name not in UPLOAD_TARGETS:
+        return jsonify(error="Unknown upload destination"), 400
+    uploads = request.files.getlist("files")
+    if not uploads:
+        return jsonify(error="No files supplied"), 400
+    target_root = UPLOAD_TARGETS[target_name]
+    allowed = UPLOAD_EXTENSIONS[target_name]
+    saved: list[str] = []
+    rejected: list[str] = []
+    for uploaded in uploads:
+        if not uploaded.filename:
+            continue
+        relative = safe_upload_relative_path(uploaded.filename)
+        if relative.suffix.lower() not in allowed:
+            rejected.append(relative.as_posix())
+            continue
+        destination = (target_root / relative).resolve()
+        if target_root != destination and target_root not in destination.parents:
+            rejected.append(relative.as_posix())
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        uploaded.save(destination)
+        saved.append(relative.as_posix())
+    if saved:
+        event("info", f"Uploaded {len(saved)} file(s) to {target_name}" + (f"; rejected {len(rejected)} unsupported file(s)" if rejected else ""))
+    return jsonify(ok=True, saved=saved, rejected=rejected, paths={
+        "source_dir": str(SOURCE_UPLOAD_ROOT),
+        "template_dir": str(TEMPLATE_UPLOAD_ROOT),
+        "output_dir": str(OUTPUT_UPLOAD_ROOT),
+    })
 
 
 @app.post("/api/chat")

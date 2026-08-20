@@ -14,7 +14,14 @@
       <label>Template folder<input id="templateDir" placeholder="/path/to/templates"></label>
       <label>Output folder<input id="outputDir" placeholder="/path/to/migrated-documents"></label>
       <button onclick="scan()">Scan documents</button>
-      <label class="upload">Add knowledge<input id="knowledge" type="file" accept=".md,.txt,.json,.yaml,.yml" onchange="uploadKnowledge()"></label>
+      <button onclick="useServerWorkspace()">Use server workspace</button>
+    </section>
+    <section class="uploads card">
+      <div><strong>Send files to the server</strong><span id="workspacePath">Uploads retain their folder structure.</span></div>
+      <label>Destination<select id="uploadTarget"><option value="source">Source documents</option><option value="templates">Templates</option><option value="knowledge">Knowledge</option></select></label>
+      <label class="upload">Choose files<input id="uploadFiles" type="file" multiple accept=".md,.txt,.json,.yaml,.yml" onchange="uploadSelected(this)"></label>
+      <label class="upload">Choose folder<input id="uploadFolder" type="file" multiple webkitdirectory directory onchange="uploadSelected(this)"></label>
+      <span id="uploadStatus" class="muted"></span>
     </section>
     <section class="toolbar card">
       <div><span id="progress">No documents scanned</span><span id="connection" class="pill">Ollama unchecked</span></div>

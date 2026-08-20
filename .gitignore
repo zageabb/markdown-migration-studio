@@ -7,3 +7,4 @@ data/template_changer.log
 data/backups/
 data/knowledge/*
 !data/knowledge/.gitkeep
+data/workspace/
