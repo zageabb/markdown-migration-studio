@@ -4,6 +4,15 @@ from pathlib import Path
 import re
 
 
+MERMAID_STARTERS = (
+    "flowchart", "graph", "sequencediagram", "classdiagram", "erdiagram", "statediagram",
+    "journey", "gantt", "pie", "quadrantchart", "requirementdiagram", "gitgraph", "mindmap",
+    "timeline", "zenuml", "sankey-beta", "xychart-beta", "block-beta", "packet-beta", "kanban",
+    "architecture-beta", "radar-beta", "treemap-beta", "c4context", "c4container", "c4component",
+    "c4dynamic", "c4deployment",
+)
+
+
 def _markdown_escape(value: object) -> str:
     return str(value or "").replace("\n", " ").strip().replace("|", "\\|")
 
@@ -108,6 +117,70 @@ def markdown_to_docx(markdown: str, destination: str | Path) -> None:
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     document.save(str(destination))
+
+
+def _looks_like_mermaid(value: str) -> bool:
+    for raw in value.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("%%") or line.startswith("---"):
+            continue
+        normalized = re.sub(r"\s+", "", line).lower()
+        return any(normalized.startswith(starter) for starter in MERMAID_STARTERS)
+    return False
+
+
+def extract_mermaid_blocks(markdown: str) -> list[tuple[str, str]]:
+    """Extract fenced Mermaid blocks and the closest preceding Markdown heading."""
+    blocks: list[tuple[str, str]] = []
+    lines = markdown.splitlines()
+    heading = "Diagram"
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].strip()
+        heading_match = re.match(r"^#{1,6}\s+(.+)$", stripped)
+        if heading_match:
+            heading = heading_match.group(1).strip()
+            index += 1
+            continue
+        fence = re.match(r"^```\s*(mermaid|mmd)\s*$", stripped, re.IGNORECASE)
+        if not fence:
+            index += 1
+            continue
+        index += 1
+        source: list[str] = []
+        while index < len(lines) and not lines[index].strip().startswith("```"):
+            source.append(lines[index])
+            index += 1
+        if source and _looks_like_mermaid("\n".join(source)):
+            blocks.append((heading, "\n".join(source).strip() + "\n"))
+        index += 1
+
+    if not blocks and _looks_like_mermaid(markdown):
+        blocks.append(("Diagram", markdown.strip() + "\n"))
+    return blocks
+
+
+def markdown_mermaid_to_pptx(markdown: str, destination: str | Path) -> int:
+    """Export Mermaid blocks as one editable 16:9 PowerPoint slide per diagram."""
+    from diagram_pptx import render_mermaid
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    blocks = extract_mermaid_blocks(markdown)
+    if not blocks:
+        raise ValueError("No Mermaid diagram blocks were found in the Markdown")
+
+    deck = Presentation()
+    deck.slide_width = Inches(13.333)
+    deck.slide_height = Inches(7.5)
+    for _heading, source in blocks:
+        slide = deck.slides.add_slide(deck.slide_layouts[6])
+        render_mermaid(source, slide=slide, position="full")
+
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    deck.save(str(destination))
+    return len(blocks)
 
 
 def _markdown_table_cells(line: str) -> list[str]:
