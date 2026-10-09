@@ -1,10 +1,11 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <base href="{{ url_for('index') }}">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Markdown Migration Studio</title>
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
   <style>.toolbar-divider{width:1px;height:28px;background:var(--line);margin:0 2px}</style>
 </head>
 <body>
@@ -49,6 +50,6 @@
     </section>
   </main>
   <dialog id="settingsDialog"><form method="dialog"><div class="dialog-head"><h2>Settings</h2><button class="ghost">×</button></div><div id="settingsFields"></div><div class="dialog-actions"><button value="cancel">Cancel</button><button type="button" class="primary" onclick="saveSettings()">Save settings</button></div></form></dialog>
-  <script src="/static/app.js"></script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

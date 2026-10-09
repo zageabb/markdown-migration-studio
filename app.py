@@ -19,6 +19,7 @@ from typing import Any
 
 import requests
 from flask import Flask, jsonify, render_template, request, send_file
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from document_conversion import docx_to_markdown, markdown_to_docx
 
@@ -43,6 +44,8 @@ logging.basicConfig(
 )
 log = logging.getLogger("template-changer")
 app = Flask(__name__)
+# Trust one UDA/Caddy ingress hop; do not expose backend to header spoofing.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_prefix=1)
 app.config["MAX_CONTENT_LENGTH"] = 512 * 1024 * 1024
 lock = threading.RLock()
 
